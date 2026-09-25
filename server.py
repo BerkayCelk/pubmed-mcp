@@ -1260,6 +1260,17 @@ OPENFDA_URL = "https://api.fda.gov"
 # FAERS drugcharacterization codes -> human labels
 _CHARACTERIZATION = {"1": "suspect", "2": "concomitant", "3": "interacting"}
 
+# FAERS seriousness: serious code + reason flags
+_SERIOUS = {"1": "serious", "2": "not serious"}
+_SERIOUSNESS_FLAGS = (
+    ("death", "seriousnessdeath"),
+    ("life-threatening", "seriousnesslifethreatening"),
+    ("hospitalization", "seriousnesshospitalization"),
+    ("disabling", "seriousnessdisabling"),
+    ("congenital-anomaly", "seriousnesscongenitalanomali"),
+    ("other", "seriousnessother"),
+)
+
 
 @mcp.tool
 def openfda_adverse_events(
@@ -1294,7 +1305,12 @@ def openfda_adverse_events(
         drugs = patient.get("drug", [])
 
         results.append({
-            "seriousness": r.get("seriousnessdeath", ""),
+            "serious": _SERIOUS.get(str(r.get("serious", "")), str(r.get("serious", ""))),
+            "seriousness": [
+                label
+                for label, key in _SERIOUSNESS_FLAGS
+                if str(r.get(key, "")) == "1"
+            ],
             "reactions": [rx.get("reactionmeddrapt", "") for rx in reactions[:10]],
             "drugs": [
                 f"{d.get('medicinalproduct','')} "
