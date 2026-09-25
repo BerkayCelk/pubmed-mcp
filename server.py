@@ -242,7 +242,7 @@ def _fetch_pmc_text(pmcid: str, sections: list[str] | None = None, max_sections:
         return None
 
 
-def _fetch_epmc_text(pmcid: str) -> dict | None:
+def _fetch_epmc_text(pmcid: str, sections_filter: list[str] | None = None) -> dict | None:
     """Fetch full text from Europe PMC fullTextXML."""
     try:
         resp = _request_raw(
@@ -258,6 +258,8 @@ def _fetch_epmc_text(pmcid: str) -> dict | None:
             title = sec.findtext("title", "")
             paras = sec.findall(".//p")
             content = "\n\n".join("".join(p.itertext()).strip() for p in paras if p.text or len(p))
+            if sections_filter and not any(s.lower() in title.lower() for s in sections_filter):
+                continue
             if content:
                 sections.append({"title": title, "content": content})
 
@@ -584,15 +586,17 @@ def pubmed_spell_check(query: str) -> dict[str, Any]:
     resp = _request("espell.fcgi", {"db": "pubmed", "term": query})
     root = ET.fromstring(resp.text)
 
-    original = root.findtext("Original", "")
+    original = root.findtext("Query", "") or query
     corrected = root.findtext("CorrectedQuery", "")
-    replaced = root.findtext("Replaced", "")
+    replacements = [
+        e.text.strip() for e in root.findall(".//Replaced") if e.text and e.text.strip()
+    ]
 
     return {
         "original": original,
         "corrected": corrected,
         "corrected_available": bool(corrected and corrected != original),
-        "replacements": replaced.split(", ") if replaced else [],
+        "replacements": replacements,
     }
 
 
@@ -692,6 +696,15 @@ def pubmed_convert_ids(ids: list[str], input_type: str = "pmid") -> dict[str, An
         ids: List of IDs to convert (up to 50).
         input_type: 'pmid', 'pmcid', or 'doi'.
     """
+    if input_type not in ("pmid", "pmcid", "doi"):
+        return {
+            "error": "input_type must be 'pmid', 'pmcid', or 'doi'",
+            "input_type": input_type,
+            "results": [],
+            "not_found": [],
+            "converted_count": 0,
+        }
+
     all_ids = ids[:50]
     results: list[dict] = []
     not_found: list[str] = []
@@ -700,7 +713,7 @@ def pubmed_convert_ids(ids: list[str], input_type: str = "pmid") -> dict[str, An
         batch = [str(x) for x in all_ids[i:i + 10]]
         params = {
             "ids": ",".join(batch),
-            "idtype": input_type if input_type != "doi" else "doi",
+            "idtype": input_type,
             "format": "json",
             "versions": "no",
         }
@@ -770,7 +783,7 @@ def pubmed_fetch_fulltext(
                 continue
 
             # Step 3: Try Europe PMC fullTextXML
-            fulltext = _fetch_epmc_text(pmcid)
+            fulltext = _fetch_epmc_text(pmcid, sections_filter)
             if fulltext:
                 entry["fulltext"] = fulltext
                 entry["source"] = "europepmc"
@@ -846,6 +859,14 @@ def pubmed_format_citations(
     return {"citations": citations, "count": len(citations), "style": style}
 
 
+def _ensure_period(t: str) -> str:
+    """Return text with exactly one trailing period (keeps ? and ! intact)."""
+    t = (t or "").strip()
+    if t and t[-1] not in ".!?":
+        t += "."
+    return t
+
+
 def _format_apa(a: dict) -> str:
     """APA 7th edition."""
     authors = a.get("authors", [])
@@ -873,7 +894,8 @@ def _format_apa(a: dict) -> str:
     if author_str:
         parts.append(author_str)
     parts.append(f"({year})" if year else "(n.d.)")
-    parts.append(f"{title}.")
+    if title:
+        parts.append(_ensure_period(title))
     journal_part = f"*{journal}*" if journal else ""
     if volume:
         journal_part += f", *{volume}*"
@@ -915,14 +937,17 @@ def _format_mla(a: dict) -> str:
 
     parts = []
     if author_str:
-        parts.append(f'{author_str}.')
-    parts.append(f'"{title}."')
+        parts.append(_ensure_period(author_str))
+    parts.append(f'"{_ensure_period(title)}"')
     journal_str = f"*{journal}*" if journal else ""
     if volume:
         journal_str += f", vol. {volume}"
         if issue:
             journal_str += f", no. {issue}"
-    parts.append(journal_str)
+    if journal_str:
+        if year:
+            journal_str += ","
+        parts.append(journal_str)
     if year:
         parts.append(f"{year},")
     if pages:
@@ -980,8 +1005,8 @@ def _format_ris(a: dict) -> str:
     """RIS format."""
     authors = a.get("authors", [])
     lines = ["TY  - JOUR"]
-    for a in authors:
-        lines.append(f"AU  - {_author_str(a)}")
+    for au in authors:
+        lines.append(f"AU  - {_author_str(au)}")
     lines.append(f"TI  - {a.get('title', '')}")
     if a.get("journal"):
         lines.append(f"JO  - {a.get('journal', '')}")
@@ -1015,15 +1040,15 @@ def _format_vancouver(a: dict) -> str:
 
     # Authors: Last FM, Last FM, Last FM.
     author_parts = []
-    for a in authors:
-        initials = a.get("initials", "")
-        author_parts.append(f"{a['last']} {initials}")
+    for au in authors:
+        initials = au.get("initials", "")
+        author_parts.append(f"{au['last']} {initials}")
     author_str = ", ".join(author_parts[:6])
     if len(authors) > 6:
         author_str += ", et al."
 
-    parts = [f"{author_str}." if author_str else ""]
-    parts.append(f"{title}.")
+    parts = [_ensure_period(author_str)]
+    parts.append(_ensure_period(title))
     parts.append(f"{journal}." if journal else "")
     if year:
         parts.append(f"{year}")
@@ -1152,13 +1177,22 @@ def pubmed_semantic_scholar(
     if search_mode == "paper" and paper_id:
         # Resolve paper ID
         _s2_rate_limit()
-        resp = _request_raw(
-            f"{SEMANTIC_SCHOLAR_URL}/paper/{paper_id}",
-            params={"fields": fields},
-            timeout=15,
-            headers={"x-api-key": S2_API_KEY} if S2_API_KEY else None,
-        )
-        return {"paper": _parse_s2_paper(resp.json())}
+        try:
+            resp = _request_raw(
+                f"{SEMANTIC_SCHOLAR_URL}/paper/{paper_id}",
+                params={"fields": fields},
+                timeout=15,
+                headers={"x-api-key": S2_API_KEY} if S2_API_KEY else None,
+            )
+            return {"paper": _parse_s2_paper(resp.json())}
+        except Exception as e:
+            return {
+                "paper_id": paper_id,
+                "error": str(e),
+                "hint": "Semantic Scholar rate limits are strict without an API key. "
+                        "Get a free key at https://www.semanticscholar.org/product/api#api-key-form "
+                        "and set S2_API_KEY env var, or use pubmed_search instead.",
+            }
 
     elif search_mode == "search" and query:
         # Semantic Scholar rate limit: ~1 req/sec
