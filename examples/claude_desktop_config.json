@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "pubmed": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/BerkayCelk/pubmed-mcp",
+        "pubmed-mcp"
+      ]
+    }
+  }
+}
