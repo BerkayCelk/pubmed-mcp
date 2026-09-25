@@ -1257,6 +1257,9 @@ def _parse_s2_paper(p: dict) -> dict:
 
 OPENFDA_URL = "https://api.fda.gov"
 
+# FAERS drugcharacterization codes -> human labels
+_CHARACTERIZATION = {"1": "suspect", "2": "concomitant", "3": "interacting"}
+
 
 @mcp.tool
 def openfda_adverse_events(
@@ -1270,13 +1273,19 @@ def openfda_adverse_events(
         drug_name: Drug name (brand or generic, e.g., 'metformin', 'ozempic').
         limit: Max results (1-100).
     """
+    drug_name = drug_name.replace('"', "").strip()
     search_term = f'patient.drug.medicinalproduct:"{drug_name}"'
     params = {
         "search": search_term,
         "limit": min(limit, 100),
     }
-    resp = _request_raw(f"{OPENFDA_URL}/drug/event.json", params=params, timeout=20)
-    data = resp.json()
+    try:
+        resp = _request_raw(f"{OPENFDA_URL}/drug/event.json", params=params, timeout=20)
+        data = resp.json()
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code != 404:
+            raise
+        data = {}
 
     results = []
     for r in data.get("results", []):
@@ -1288,7 +1297,8 @@ def openfda_adverse_events(
             "seriousness": r.get("seriousnessdeath", ""),
             "reactions": [rx.get("reactionmeddrapt", "") for rx in reactions[:10]],
             "drugs": [
-                f"{d.get('medicinalproduct','')} ({d.get('drugcharacterization','')})"
+                f"{d.get('medicinalproduct','')} "
+                f"({_CHARACTERIZATION.get(d.get('drugcharacterization',''), d.get('drugcharacterization',''))})"
                 for d in drugs[:5]
             ],
             "patient_age": patient.get("patientonsetage", ""),
@@ -1314,12 +1324,21 @@ def openfda_drug_label(
     Args:
         drug_name: Drug name (brand or generic, e.g., 'metformin', 'ozempic').
     """
-    search = f'openfda.brand_name:"{drug_name}"+openfda.generic_name:"{drug_name}"'
-    url = f"{OPENFDA_URL}/drug/label.json?search={quote(search)}&limit=1"
-    resp = _request_raw(url, timeout=20)
-    data = resp.json()
+    drug_name = drug_name.replace('"', "").strip()
+    results: list = []
+    for field in ("openfda.brand_name", "openfda.generic_name"):
+        search = f'{field}:"{drug_name}"'
+        url = f"{OPENFDA_URL}/drug/label.json?search={quote(search)}&limit=1"
+        try:
+            resp = _request_raw(url, timeout=20)
+            results = resp.json().get("results", [])
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code != 404:
+                raise
+            results = []
+        if results:
+            break
 
-    results = data.get("results", [])
     if not results:
         return {"drug": drug_name, "found": False}
 
@@ -1351,12 +1370,18 @@ def openfda_drug_enforcement(
         drug_name: Optional drug name filter.
         limit: Max results (1-25).
     """
+    drug_name = drug_name.replace('"', "").strip()
     params: dict[str, Any] = {"limit": min(limit, 25)}
     if drug_name:
         params["search"] = f'product_description:"{drug_name}"'
 
-    resp = _request_raw(f"{OPENFDA_URL}/drug/enforcement.json", params=params, timeout=20)
-    data = resp.json()
+    try:
+        resp = _request_raw(f"{OPENFDA_URL}/drug/enforcement.json", params=params, timeout=20)
+        data = resp.json()
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code != 404:
+            raise
+        data = {}
 
     reports = []
     for r in data.get("results", []):
