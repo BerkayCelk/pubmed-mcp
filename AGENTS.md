@@ -4,7 +4,7 @@ Guidance for AI coding agents that install, use, or modify this repo.
 
 ## What this is
 
-`pubmed-mcp` -- a single-file MCP (stdio) server (17 tools) for biomedical
+`pubmed-mcp` -- a single-file MCP (stdio) server (17 tools) for medical and biomedical
 literature research: PubMed (NCBI E-utilities), Europe PMC, PMC full text /
 Unpaywall, MeSH, citations, ClinicalTrials.gov, Semantic Scholar, OpenFDA
 (adverse events / labels / enforcement), and DrugBank.

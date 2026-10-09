@@ -1,6 +1,6 @@
 # pubmed-mcp
 
-**An MCP server for biomedical literature research — 17 tools covering PubMed,
+**An MCP server for medical and biomedical literature research — 17 tools covering PubMed,
 Europe PMC, full-text retrieval, MeSH, citations, clinical trials, Semantic
 Scholar, OpenFDA and DrugBank.**
 
@@ -22,7 +22,7 @@ it never writes to upstream services.
 | 4 | `pubmed_find_related` | PubMed | Similar / citing / reference articles |
 | 5 | `pubmed_citation_search` | PubMed | Partial citation → PMID resolution |
 | 6 | `pubmed_europepmc_search` | Europe PMC | Broader corpus: preprints, patents, Agricola |
-| 7 | `pubmed_spell_check` | NCBI ESpell | Biomedical query spell check |
+| 7 | `pubmed_spell_check` | NCBI ESpell | Medical and biomedical query spell check |
 | 8 | `pubmed_lookup_mesh` | MeSH | Medical Subject Headings vocabulary |
 | 9 | `pubmed_convert_ids` | PMC ID Converter | DOI ↔ PMID ↔ PMCID conversion |
 | 10 | `pubmed_fetch_fulltext` | PMC / Europe PMC / Unpaywall | Full text as structured sections |

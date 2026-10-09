@@ -1,5 +1,5 @@
 """
-PubMed MCP Server — biomedical literature toolkit.
+PubMed MCP Server — medical and biomedical literature toolkit.
 
 Wraps NCBI E-utilities (PubMed, MeSH, ESpell, ECitMatch, PMC), Europe PMC,
 PMC ID Converter, Unpaywall, ClinicalTrials.gov, Semantic Scholar, OpenFDA
@@ -317,7 +317,7 @@ def pubmed_search(
     only_with_abstract: bool = False,
 ) -> dict[str, Any]:
     """
-    Search PubMed for biomedical articles.
+    Search PubMed for medical and biomedical articles.
 
     Args:
         query: Search query using PubMed syntax (e.g., 'CRISPR gene editing',
@@ -580,7 +580,7 @@ def pubmed_europepmc_search(
 @mcp.tool
 def pubmed_spell_check(query: str) -> dict[str, Any]:
     """
-    Spell-check a biomedical query using NCBI's ESpell service.
+    Spell-check a medical and biomedical query using NCBI's ESpell service.
     Useful for query refinement before searching.
     """
     resp = _request("espell.fcgi", {"db": "pubmed", "term": query})
